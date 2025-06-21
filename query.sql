@@ -18,15 +18,18 @@ CREATE TABLE
         end_time TIME,
         room VARCHAR(255),
         remarks VARCHAR(255)
-    )
+    );
+
 CREATE TABLE
     reservations (
         id INT PRIMARY KEY AUTO_INCREMENT,
-        patient_name VARCHAR(255),
-        doctor_name VARCHAR(255),
+        patient_id INT,
+        doctor_id INT,
         visit_date DATE,
         visit_time TIME,
         room VARCHAR(255),
         status VARCHAR(255),
-        remarks VARCHAR(255)
-    )
+        remarks VARCHAR(255),
+        FOREIGN KEY (patient_id) REFERENCES patients (id),
+        FOREIGN KEY (doctor_id) references doctor_schedules (id)
+    );
