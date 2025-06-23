@@ -18,6 +18,11 @@ public class FormReservasi extends JFrame {
     private Map<Integer, String> dokterRuangMap = new HashMap<>();
 
     private JTextField txtTanggal, txtRuang;
+    private JTextArea txtCatatan;
+    private JComboBox<String> cbJam;
+    private JButton btnKirim;
+
+    private Integer editingId = null;
 
     public FormReservasi() {
         initComponents();
@@ -48,7 +53,6 @@ public class FormReservasi extends JFrame {
         gbc.gridwidth = 1;
         gbc.insets = new Insets(5, 5, 5, 5);
 
-        // Pasien
         JLabel lblPasien = new JLabel("Nama Pasien:");
         gbc.gridx = 0;
         gbc.gridy = 1;
@@ -59,7 +63,6 @@ public class FormReservasi extends JFrame {
         formPanel.add(cbPasien, gbc);
         loadPasien();
 
-        // Dokter
         JLabel lblDokter = new JLabel("Nama Dokter:");
         gbc.gridx = 0;
         gbc.gridy = 2;
@@ -72,14 +75,13 @@ public class FormReservasi extends JFrame {
 
         cbDokter.addActionListener(e -> {
             String selected = (String) cbDokter.getSelectedItem();
-            if (selected != null) {
+            if (selected != null && dokterIdMap.containsKey(selected)) {
                 int id = dokterIdMap.get(selected);
                 String ruang = dokterRuangMap.get(id);
                 txtRuang.setText(ruang);
             }
         });
 
-        // Tanggal
         JLabel lblTanggal = new JLabel("Tgl. Kunjungan (yyyy-mm-dd):");
         gbc.gridx = 0;
         gbc.gridy = 3;
@@ -89,17 +91,15 @@ public class FormReservasi extends JFrame {
         gbc.gridx = 1;
         formPanel.add(txtTanggal, gbc);
 
-        // Jam
         JLabel lblJam = new JLabel("Jam Kunjungan:");
         gbc.gridx = 0;
         gbc.gridy = 4;
         formPanel.add(lblJam, gbc);
 
-        JComboBox<String> cbJam = new JComboBox<>(new String[] { "08:00:00", "09:00:00", "10:00:00", "11:00:00" });
+        cbJam = new JComboBox<>(new String[] { "08:00:00", "09:00:00", "10:00:00", "11:00:00" });
         gbc.gridx = 1;
         formPanel.add(cbJam, gbc);
 
-        // Ruang
         JLabel lblRuang = new JLabel("Ruang:");
         gbc.gridx = 0;
         gbc.gridy = 5;
@@ -110,22 +110,22 @@ public class FormReservasi extends JFrame {
         gbc.gridx = 1;
         formPanel.add(txtRuang, gbc);
 
-        // Catatan
         JLabel lblCatatan = new JLabel("Catatan:");
         gbc.gridx = 0;
         gbc.gridy = 6;
         formPanel.add(lblCatatan, gbc);
 
-        JTextArea txtCatatan = new JTextArea(3, 20);
+        txtCatatan = new JTextArea(3, 20);
         JScrollPane scroll = new JScrollPane(txtCatatan);
         gbc.gridx = 1;
         formPanel.add(scroll, gbc);
 
-        // Tombol
-        JButton btnKirim = new JButton("Kirim");
+        btnKirim = new JButton("Kirim");
         JButton btnTutup = new JButton("Tutup");
+        JButton btnBatal = new JButton("Batal Edit");
         JPanel buttonPanel = new JPanel();
         buttonPanel.add(btnKirim);
+        buttonPanel.add(btnBatal);
         buttonPanel.add(btnTutup);
 
         gbc.gridx = 0;
@@ -136,7 +136,6 @@ public class FormReservasi extends JFrame {
 
         add(formPanel, BorderLayout.NORTH);
 
-        // Tabel
         tableModel = new DefaultTableModel(new String[] {
                 "ID", "Pasien", "Dokter", "Tanggal", "Jam", "Ruang", "Status", "Catatan"
         }, 0);
@@ -145,54 +144,93 @@ public class FormReservasi extends JFrame {
         scrollTable.setBorder(BorderFactory.createTitledBorder("Daftar Reservasi"));
         add(scrollTable, BorderLayout.CENTER);
 
-        // Event Kirim
-        btnKirim.addActionListener(e -> {
-            String pasien = (String) cbPasien.getSelectedItem();
-            String dokter = (String) cbDokter.getSelectedItem();
-            String tanggal = txtTanggal.getText();
-            String jam = cbJam.getSelectedItem().toString();
-            String ruang = txtRuang.getText();
-            String catatan = txtCatatan.getText();
+        btnKirim.addActionListener(e -> handleSubmit());
+        btnTutup.addActionListener(e -> dispose());
+        btnBatal.addActionListener(e -> resetForm());
 
-            if (pasien == null || dokter == null || tanggal.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Lengkapi semua data!", "Peringatan", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-
-            int pasienId = pasienIdMap.get(pasien);
-            int dokterId = dokterIdMap.get(dokter);
-
-            try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/tugas_akhir_oop",
-                    "faizmysql", "030303");
-                    PreparedStatement stmt = conn.prepareStatement(
-                            "INSERT INTO reservations (patient_id, doctor_id, visit_date, visit_time, room, status, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
-
-                stmt.setInt(1, pasienId);
-                stmt.setInt(2, dokterId);
-                stmt.setDate(3, Date.valueOf(tanggal));
-                stmt.setString(4, jam);
-                stmt.setString(5, ruang);
-                stmt.setString(6, "Terkirim");
-                stmt.setString(7, catatan);
-
-                stmt.executeUpdate();
-                JOptionPane.showMessageDialog(this, "Reservasi berhasil dikirim!");
-
-                txtTanggal.setText("");
-                txtCatatan.setText("");
-                cbJam.setSelectedIndex(0);
-                cbDokter.setSelectedIndex(0);
-                cbPasien.setSelectedIndex(0);
-                txtRuang.setText("");
-
-                loadData();
-
-            } catch (SQLException ex) {
-                JOptionPane.showMessageDialog(this, "Gagal menyimpan: " + ex.getMessage());
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                int row = table.getSelectedRow();
+                if (row >= 0) {
+                    editingId = (Integer) tableModel.getValueAt(row, 0);
+                    cbPasien.setSelectedItem(tableModel.getValueAt(row, 1));
+                    cbDokter.setSelectedItem(tableModel.getValueAt(row, 2));
+                    txtTanggal.setText(tableModel.getValueAt(row, 3).toString());
+                    cbJam.setSelectedItem(tableModel.getValueAt(row, 4).toString());
+                    txtRuang.setText(tableModel.getValueAt(row, 5).toString());
+                    txtCatatan.setText(tableModel.getValueAt(row, 7).toString());
+                    btnKirim.setText("Update");
+                }
             }
         });
+    }
 
-        btnTutup.addActionListener(e -> dispose());
+    private void handleSubmit() {
+        String pasien = (String) cbPasien.getSelectedItem();
+        String dokter = (String) cbDokter.getSelectedItem();
+        String tanggal = txtTanggal.getText();
+        String jam = cbJam.getSelectedItem().toString();
+        String ruang = txtRuang.getText();
+        String catatan = txtCatatan.getText();
+
+        if (pasien == null || pasien.isEmpty() || dokter == null || dokter.isEmpty() || tanggal.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Lengkapi semua data!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        int pasienId = pasienIdMap.get(pasien);
+        int dokterId = dokterIdMap.get(dokter);
+
+        try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/tugas_akhir_oop",
+                "faizmysql", "030303")) {
+
+            if (editingId == null) {
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "INSERT INTO reservations (patient_id, doctor_id, visit_date, visit_time, room, status, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+
+                    stmt.setInt(1, pasienId);
+                    stmt.setInt(2, dokterId);
+                    stmt.setDate(3, Date.valueOf(tanggal));
+                    stmt.setString(4, jam);
+                    stmt.setString(5, ruang);
+                    stmt.setString(6, "Terkirim");
+                    stmt.setString(7, catatan);
+                    stmt.executeUpdate();
+                    JOptionPane.showMessageDialog(this, "Reservasi berhasil ditambahkan!");
+                }
+            } else {
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "UPDATE reservations SET patient_id=?, doctor_id=?, visit_date=?, visit_time=?, room=?, remarks=? WHERE id=?")) {
+
+                    stmt.setInt(1, pasienId);
+                    stmt.setInt(2, dokterId);
+                    stmt.setDate(3, Date.valueOf(tanggal));
+                    stmt.setString(4, jam);
+                    stmt.setString(5, ruang);
+                    stmt.setString(6, catatan);
+                    stmt.setInt(7, editingId);
+                    stmt.executeUpdate();
+                    JOptionPane.showMessageDialog(this, "Reservasi berhasil diperbarui!");
+                }
+            }
+
+            loadData();
+            resetForm();
+
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(this, "Gagal menyimpan: " + ex.getMessage());
+        }
+    }
+
+    private void resetForm() {
+        txtTanggal.setText("");
+        txtCatatan.setText("");
+        txtRuang.setText("");
+        cbJam.setSelectedIndex(0);
+        cbDokter.setSelectedIndex(0);
+        cbPasien.setSelectedIndex(0);
+        editingId = null;
+        btnKirim.setText("Kirim");
     }
 
     private void loadData() {
@@ -201,7 +239,7 @@ public class FormReservasi extends JFrame {
                 "faizmysql", "030303");
                 Statement stmt = conn.createStatement();
                 ResultSet rs = stmt.executeQuery(
-                        "SELECT r.id, p.name AS pasien, d.doctor_name AS dokter, r.visit_date, r.visit_time, r.room, r.status, r.remarks "
+                        "SELECT r.id, p.name AS pasien, d.doctor_name AS dokter, d.specialist, r.visit_date, r.visit_time, r.room, r.status, r.remarks "
                                 +
                                 "FROM reservations r " +
                                 "JOIN patients p ON r.patient_id = p.id " +
@@ -211,7 +249,7 @@ public class FormReservasi extends JFrame {
                 Object[] row = {
                         rs.getInt("id"),
                         rs.getString("pasien"),
-                        rs.getString("dokter"),
+                        rs.getString("dokter") + " (" + rs.getString("specialist") + ")",
                         rs.getDate("visit_date"),
                         rs.getTime("visit_time"),
                         rs.getString("room"),
@@ -234,8 +272,7 @@ public class FormReservasi extends JFrame {
 
             cbPasien.removeAllItems();
             pasienIdMap.clear();
-
-            cbPasien.addItem(""); // Tambahkan item kosong dulu
+            cbPasien.addItem("");
 
             while (rs.next()) {
                 int id = rs.getInt("id");
@@ -258,8 +295,7 @@ public class FormReservasi extends JFrame {
             cbDokter.removeAllItems();
             dokterIdMap.clear();
             dokterRuangMap.clear();
-
-            cbDokter.addItem(""); // Tambahkan item kosong dulu
+            cbDokter.addItem("");
 
             while (rs.next()) {
                 int id = rs.getInt("id");
