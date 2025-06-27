@@ -1,8 +1,8 @@
-import javax.swing.*; 
-import java.awt.*; 
-import java.sql.*; 
+import javax.swing.*;
+import java.awt.*;
+import java.sql.*;
 import java.awt.event.*;
-import javax.swing.table.DefaultTableModel; // Untuk model tabel
+import javax.swing.table.DefaultTableModel;
 
 public class FormPendaftaranPasien extends JFrame {
     private JTextField namaField, tglLahirField, telpField;
@@ -12,6 +12,8 @@ public class FormPendaftaranPasien extends JFrame {
 
     private JTable table;
     private DefaultTableModel tableModel;
+
+    private int selectedId = -1; // Digunakan untuk mode update
 
     private final String DB_URL = "jdbc:mysql://localhost:3306/tugas_akhir_oop";
     private final String DB_USER = "faizmysql";
@@ -23,10 +25,8 @@ public class FormPendaftaranPasien extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        // Panel utama dengan BorderLayout
         JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Panel form (atas)
         JPanel formPanel = new JPanel(new GridLayout(7, 2, 10, 10));
         formPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
@@ -54,41 +54,49 @@ public class FormPendaftaranPasien extends JFrame {
         daftarButton = new JButton("Daftar");
         resetButton = new JButton("Reset");
 
-        daftarButton.addActionListener(e -> simpanData());
-
-        resetButton.addActionListener(e -> {
-            namaField.setText("");
-            tglLahirField.setText("");
-            telpField.setText("");
-            alamatArea.setText("");
-            genderBox.setSelectedIndex(0);
+        daftarButton.addActionListener(e -> {
+            if (selectedId == -1) {
+                simpanData(); // Tambah baru
+            } else {
+                updateData(); // Update data
+            }
         });
+
+        resetButton.addActionListener(e -> resetForm());
 
         formPanel.add(daftarButton);
         formPanel.add(resetButton);
 
-        // Tambahkan panel form ke bagian atas mainPanel
         mainPanel.add(formPanel, BorderLayout.NORTH);
 
-        // Panel tabel (bawah)
         tableModel = new DefaultTableModel(new String[] {
-            "ID", "Nama", "Jenis Kelamin", "Tanggal Lahir", "Alamat", "Telepon"
+                "ID", "Nama", "Jenis Kelamin", "Tanggal Lahir", "Alamat", "Telepon"
         }, 0);
         table = new JTable(tableModel);
         JScrollPane scrollPaneTable = new JScrollPane(table);
-
-        // Tambahkan tabel ke bagian tengah mainPanel
         mainPanel.add(scrollPaneTable, BorderLayout.CENTER);
 
-        // Tambahkan mainPanel ke JFrame
+        // Tambahkan listener untuk klik baris tabel
+        table.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                int selectedRow = table.getSelectedRow();
+                if (selectedRow >= 0) {
+                    selectedId = (int) tableModel.getValueAt(selectedRow, 0);
+                    namaField.setText((String) tableModel.getValueAt(selectedRow, 1));
+                    genderBox.setSelectedItem(tableModel.getValueAt(selectedRow, 2));
+                    tglLahirField.setText(tableModel.getValueAt(selectedRow, 3).toString());
+                    alamatArea.setText((String) tableModel.getValueAt(selectedRow, 4));
+                    telpField.setText((String) tableModel.getValueAt(selectedRow, 5));
+                    daftarButton.setText("Update"); // Ubah tombol
+                }
+            }
+        });
+
         add(mainPanel);
         setVisible(true);
-
-        // Muat data saat pertama kali
         loadData();
     }
 
-    // Method untuk menyimpan data ke database
     private void simpanData() {
         String nama = namaField.getText();
         String gender = (String) genderBox.getSelectedItem();
@@ -99,7 +107,7 @@ public class FormPendaftaranPasien extends JFrame {
         String sql = "INSERT INTO patients (name, gender, date_of_birth, address, phone_number) VALUES (?, ?, ?, ?, ?)";
 
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, nama);
             stmt.setString(2, gender);
@@ -110,44 +118,84 @@ public class FormPendaftaranPasien extends JFrame {
             int inserted = stmt.executeUpdate();
 
             if (inserted > 0) {
-                JOptionPane.showMessageDialog(this, "Data pasien berhasil disimpan!", "Sukses",
-                        JOptionPane.INFORMATION_MESSAGE);
-                loadData(); // Refresh data setelah insert
-            } else {
-                JOptionPane.showMessageDialog(this, "Gagal menyimpan data.", "Gagal", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Data pasien berhasil disimpan!");
+                loadData();
+                resetForm();
             }
 
         } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "Kesalahan koneksi/database: " + ex.getMessage(), "Error",
-                    JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Gagal menyimpan data: " + ex.getMessage());
         }
     }
 
-    // Method untuk memuat data dari database ke tabel
-    private void loadData() {
-        tableModel.setRowCount(0); // Kosongkan data lama
-        String sql = "SELECT * FROM patients";
+    private void updateData() {
+        if (selectedId == -1)
+            return;
+
+        String nama = namaField.getText();
+        String gender = (String) genderBox.getSelectedItem();
+        String tglLahir = tglLahirField.getText();
+        String alamat = alamatArea.getText();
+        String telp = telpField.getText();
+
+        String sql = "UPDATE patients SET name=?, gender=?, date_of_birth=?, address=?, phone_number=? WHERE id=?";
 
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            while (rs.next()) {
-                Object[] row = {
-                    rs.getInt("id"),
-                    rs.getString("name"),
-                    rs.getString("gender"),
-                    rs.getDate("date_of_birth"),
-                    rs.getString("address"),
-                    rs.getString("phone_number")
-                };
-                tableModel.addRow(row); // Tambahkan baris ke model
+            stmt.setString(1, nama);
+            stmt.setString(2, gender);
+            stmt.setDate(3, Date.valueOf(tglLahir));
+            stmt.setString(4, alamat);
+            stmt.setString(5, telp);
+            stmt.setInt(6, selectedId);
+
+            int updated = stmt.executeUpdate();
+
+            if (updated > 0) {
+                JOptionPane.showMessageDialog(this, "Data berhasil diperbarui!");
+                loadData();
+                resetForm();
             }
 
         } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "Gagal memuat data: " + ex.getMessage(), "Error",
-                    JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Gagal update data: " + ex.getMessage());
         }
+    }
+
+    private void loadData() {
+        tableModel.setRowCount(0);
+        String sql = "SELECT * FROM patients";
+
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                Object[] row = {
+                        rs.getInt("id"),
+                        rs.getString("name"),
+                        rs.getString("gender"),
+                        rs.getDate("date_of_birth"),
+                        rs.getString("address"),
+                        rs.getString("phone_number")
+                };
+                tableModel.addRow(row);
+            }
+
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(this, "Gagal load data: " + ex.getMessage());
+        }
+    }
+
+    private void resetForm() {
+        namaField.setText("");
+        tglLahirField.setText("");
+        telpField.setText("");
+        alamatArea.setText("");
+        genderBox.setSelectedIndex(0);
+        daftarButton.setText("Daftar");
+        selectedId = -1;
     }
 
     public static void main(String[] args) {
